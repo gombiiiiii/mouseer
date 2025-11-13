@@ -165,16 +165,28 @@ def event_listener_loop():
 
 def create_gui():
     root = tk.Tk()
-    root.title("Mouse Mapper")
+    root.title("Mouseer")
 
-    # Letisztult, kicsi ablak
-    root.geometry("420x220")
+    # Letisztult, kicsi ablak – méret
+    window_width = 420
+    window_height = 220
+    root.geometry(f"{window_width}x{window_height}")
     root.resizable(False, False)
+
+    # --- Ablak középre igazítása ---
+    root.update_idletasks()  # hogy legyenek érvényes méretek
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    x = (screen_width // 2) - (window_width // 2)
+    y = (screen_height // 2) - (window_height // 2)
+
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    # -------------------------------
 
     # Leíró szöveg
     description = (
-        "Mouse Mapper – extra egérgombok macOS gesztusokra.\n"
-        "Készítette: Gombos Adrián\n\n"
+        "Mouseer : extra egérgombok macOS gesztusokra.\n\n"
         "Válaszd ki, melyik oldalsó gomb milyen műveletet indítson."
     )
     label = tk.Label(root, text=description, justify="left")
@@ -237,17 +249,23 @@ def create_gui():
     def apply_changes():
         button_actions[BUTTON_SIDE_1] = ACTION_LABELS[var_btn1.get()]
         button_actions[BUTTON_SIDE_2] = ACTION_LABELS[var_btn2.get()]
-        #print("Új mapping:", button_actions)
+        status_var.set("Beállítások alkalmazva")
 
     apply_btn = ttk.Button(root, text="Beállítások alkalmazása", command=apply_changes)
-    apply_btn.pack(pady=(12, 8))
+    apply_btn.pack(pady=(12, 4))
+
+    # --- Státuszsor az ablak alján ---
+    global status_var
+    status_var = tk.StringVar(value="Készítette: Gombos Adrián")
+    status_label = tk.Label(root, textvariable=status_var,
+                            anchor="w", fg="gray")
+    status_label.pack(fill="x", padx=8, pady=(0, 6), side="bottom")
+    # ---------------------------------
 
     # Ablak bezárásakor ne szálljon el az app, csak "tálcára kerüljön"
     def on_close():
-        # egyszerű verzió: minimalizáljuk az ablakot
         root.iconify()
-        # ha teljesen el szeretnéd rejteni:
-        # root.withdraw()
+        # root.withdraw()  # ha teljesen el akarod rejteni
 
     root.protocol("WM_DELETE_WINDOW", on_close)
 
