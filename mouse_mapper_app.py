@@ -5,36 +5,36 @@ import queue
 
 import Quartz
 import CoreFoundation
+from Foundation import NSAppleScript
 
 import tkinter as tk
 from tkinter import ttk
 
-# ========== AppleScript helper függvények ==========
 
-def run_applescript(cmd: str):
-    """Egyszerű helper, ami lefuttat egy AppleScript parancsot."""
-    subprocess.run(["osascript", "-e", cmd])
+# ========== AppleScript helper függvények (NSAppleScript-tel) ==========
+
+# Előre lefordított AppleScript objektumok – nem indul külön processz kattintásonként
+_space_left_script = NSAppleScript.alloc().initWithSource_(
+    'tell application "System Events" to key code 123 using control down'
+)
+_space_right_script = NSAppleScript.alloc().initWithSource_(
+    'tell application "System Events" to key code 124 using control down'
+)
+_mission_control_script = NSAppleScript.alloc().initWithSource_(
+    'tell application "System Events" to key code 126 using control down'
+)
 
 
 def switch_space_left():
-    # Ctrl + bal nyíl (key code 123)
-    run_applescript(
-        'tell application "System Events" to key code 123 using control down'
-    )
+    _space_left_script.executeAndReturnError_(None)
 
 
 def switch_space_right():
-    # Ctrl + jobb nyíl (key code 124)
-    run_applescript(
-        'tell application "System Events" to key code 124 using control down'
-    )
+    _space_right_script.executeAndReturnError_(None)
 
 
 def show_mission_control():
-    # Ctrl + fel nyíl (key code 126)
-    run_applescript(
-        'tell application "System Events" to key code 126 using control down'
-    )
+    _mission_control_script.executeAndReturnError_(None)
 
 
 # ========== Gomb -> akció mapping (globális állapot) ==========
@@ -75,7 +75,7 @@ action_queue: "queue.Queue[str]" = queue.Queue()
 
 def action_worker():
     """Külön szál, ami végrehajtja a kattintásokhoz tartozó akciókat."""
-    print("Action worker szál elindult.")
+    #print("Action worker szál elindult.")
     while True:
         action_key = action_queue.get()
         try:
@@ -112,7 +112,7 @@ def mouse_callback(proxy, type_, event, refcon):
         if action_key != ACTION_NONE:
             # FONTOS: itt csak betesszük a queue-ba és AZONNAL visszatérünk,
             # hogy a callback gyors legyen → ne tiltsa le a macOS a tap-et.
-            print(f"Button {button} -> {action_key} (queued)")
+            #print(f"Button {button} -> {action_key} (queued)")
             action_queue.put(action_key)
             # Eredeti egéreseményt elnyeljük, hogy ne legyen "Back" a böngészőben
             return None
@@ -150,7 +150,7 @@ def event_listener_loop():
 
     Quartz.CGEventTapEnable(event_tap, True)
 
-    print("Egéresemény-listener fut (háttérszál).")
+    #print("Egéresemény-listener fut (háttérszál).")
 
     try:
         while True:
@@ -237,7 +237,7 @@ def create_gui():
     def apply_changes():
         button_actions[BUTTON_SIDE_1] = ACTION_LABELS[var_btn1.get()]
         button_actions[BUTTON_SIDE_2] = ACTION_LABELS[var_btn2.get()]
-        print("Új mapping:", button_actions)
+        #print("Új mapping:", button_actions)
 
     apply_btn = ttk.Button(root, text="Beállítások alkalmazása", command=apply_changes)
     apply_btn.pack(pady=(12, 8))
@@ -273,7 +273,7 @@ def main():
 
     # GUI a főszálon
     root = create_gui()
-    print("ℹ Mouse Mapper GUI fut. Minimalizáld az ablakot, a háttérben tovább fut.")
+    #print("Mouse Mapper GUI fut. Minimalizáld az ablakot, a háttérben tovább fut.")
     root.mainloop()
 
 
