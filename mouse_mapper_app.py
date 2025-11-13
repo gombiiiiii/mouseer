@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import threading
 import subprocess
+import queue
 
 import Quartz
 import CoreFoundation
@@ -49,14 +50,14 @@ ACTION_SPACE_RIGHT     = "space_right"
 ACTION_MISSION_CONTROL = "mission_control"
 
 # Jelenlegi mapping (gomb -> akció)
-# Alapértelmezés: mint a mostani CLI-s verzió
+# Alapértelmezés: mint a korábbi CLI-s verzió
 button_actions = {
     BUTTON_SIDE_1: ACTION_SPACE_LEFT,
     BUTTON_SIDE_2: ACTION_SPACE_RIGHT,
 }
 
 def perform_action(action_key: str):
-    """A mappingben lévő akció végrehajtása."""
+    """A mappingben lévő akció végrehajtása (ez már külön worker szálon fut)."""
     if action_key == ACTION_SPACE_LEFT:
         switch_space_left()
     elif action_key == ACTION_SPACE_RIGHT:
@@ -68,9 +69,38 @@ def perform_action(action_key: str):
         pass
 
 
+# ========== Queue az akcióknak + worker szál ==========
+
+action_queue: "queue.Queue[str]" = queue.Queue()
+
+def action_worker():
+    """Külön szál, ami végrehajtja a kattintásokhoz tartozó akciókat."""
+    print("Action worker szál elindult.")
+    while True:
+        action_key = action_queue.get()
+        try:
+            perform_action(action_key)
+        except Exception as e:
+            print("Hiba az akció végrehajtásakor:", e)
+        finally:
+            action_queue.task_done()
+
+
 # ========== Egéresemény listener (háttérszálon fut) ==========
 
+event_tap = None  # globális, hogy callbackből újra tudjuk engedélyezni
+
 def mouse_callback(proxy, type_, event, refcon):
+    global event_tap
+
+    # Ha a rendszer letiltja a tap-et timeout vagy user input miatt
+    if type_ == Quartz.kCGEventTapDisabledByTimeout or \
+       type_ == Quartz.kCGEventTapDisabledByUserInput:
+        print("Event tap letiltva, újraengedélyezem...")
+        if event_tap is not None:
+            Quartz.CGEventTapEnable(event_tap, True)
+        return event
+
     if type_ == Quartz.kCGEventOtherMouseDown:
         button = Quartz.CGEventGetIntegerValueField(
             event,
@@ -80,8 +110,10 @@ def mouse_callback(proxy, type_, event, refcon):
         action_key = button_actions.get(button, ACTION_NONE)
 
         if action_key != ACTION_NONE:
-            print(f"Button {button} -> {action_key}")
-            perform_action(action_key)
+            # FONTOS: itt csak betesszük a queue-ba és AZONNAL visszatérünk,
+            # hogy a callback gyors legyen → ne tiltsa le a macOS a tap-et.
+            print(f"Button {button} -> {action_key} (queued)")
+            action_queue.put(action_key)
             # Eredeti egéreseményt elnyeljük, hogy ne legyen "Back" a böngészőben
             return None
 
@@ -90,6 +122,8 @@ def mouse_callback(proxy, type_, event, refcon):
 
 def event_listener_loop():
     """Egéresemény figyelő loop (külön szálon fut)."""
+    global event_tap
+
     event_mask = Quartz.CGEventMaskBit(Quartz.kCGEventOtherMouseDown)
 
     event_tap = Quartz.CGEventTapCreate(
@@ -131,7 +165,7 @@ def event_listener_loop():
 
 def create_gui():
     root = tk.Tk()
-    root.title("Mouseer")
+    root.title("Mouse Mapper")
 
     # Letisztult, kicsi ablak
     root.geometry("420x220")
@@ -139,7 +173,7 @@ def create_gui():
 
     # Leíró szöveg
     description = (
-        "Mouseer : extra egérgombok macOS gesztusokra.\n"
+        "Mouse Mapper – extra egérgombok macOS gesztusokra.\n"
         "Készítette: Gombos Adrián\n\n"
         "Válaszd ki, melyik oldalsó gomb milyen műveletet indítson."
     )
@@ -199,7 +233,7 @@ def create_gui():
     )
     combo2.pack(side="right")
 
-    # Mentés / Apply gomb (igazából azonnal érvényesítjük, de jó UX-nek)
+    # Mentés / Apply gomb
     def apply_changes():
         button_actions[BUTTON_SIDE_1] = ACTION_LABELS[var_btn1.get()]
         button_actions[BUTTON_SIDE_2] = ACTION_LABELS[var_btn2.get()]
@@ -223,6 +257,13 @@ def create_gui():
 # ========== main ==========
 
 def main():
+    # Action worker szál indítása
+    worker_thread = threading.Thread(
+        target=action_worker,
+        daemon=True,
+    )
+    worker_thread.start()
+
     # Háttérszálon indítjuk a listener loopot
     listener_thread = threading.Thread(
         target=event_listener_loop,
